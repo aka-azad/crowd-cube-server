@@ -15,7 +15,7 @@ app.get("/", (req, res) => {
 
 //mongoDB
 
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const uri = process.env.MONGODB_URI;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
@@ -49,8 +49,6 @@ async function run() {
         return;
       }
       res.send({ response: "user already added" });
-      console.log(data);
-      console.log(userData);
     });
 
     //campaigns data
@@ -58,6 +56,57 @@ async function run() {
     app.post("/campaigns", async (req, res) => {
       const campaignData = req.body;
       const result = await campaignsCollection.insertOne(campaignData);
+      res.send(result);
+    });
+
+    app.get("/campaigns", async (req, res) => {
+      const cursor = campaignsCollection.find();
+      const result = await cursor.toArray();
+      res.send(result);
+    });
+
+    app.get("/running-campaigns", async (req, res) => {
+      const currentDate = new Date();
+      const filter = { deadline: { $gt: currentDate.toISOString() } };
+      const runningCampaigns = await campaignsCollection
+        .find(filter)
+        .limit(6)
+        .toArray();
+      res.send(runningCampaigns);
+    });
+
+    //user specific campaigns
+    app.get("/campaigns/:id", async (req, res) => {
+      const email = req.params.id;
+      const filter = { email: email };
+      const cursor = campaignsCollection.find(filter);
+      const result = await cursor.toArray();
+      res.send(result);
+    });
+
+    app.patch("/campaigns/:id", async (req, res) => {
+      const id = req.params.id;
+      const data = req.body;
+      const filter = { _id: new ObjectId(id) };
+      const updatedData = {
+        $set: data,
+      };
+
+      const result = await campaignsCollection.updateOne(filter, updatedData);
+      res.send(result);
+    });
+
+    app.get("/my-campaigns/:id", async (req, res) => {
+      const id = req.params.id;
+      const filter = { _id: new ObjectId(id) };
+      const result = await campaignsCollection.findOne(filter);
+      res.send(result);
+    });
+
+    app.delete("/my-campaigns/:id", async (req, res) => {
+      const id = req.params.id;
+      const filter = { _id: new ObjectId(id) };
+      const result = await campaignsCollection.deleteOne(filter);
       res.send(result);
     });
 
