@@ -36,6 +36,7 @@ async function run() {
     const database = client.db("crowdcubeDB");
     const usersCollection = database.collection("users");
     const campaignsCollection = database.collection("campaigns");
+    const donationsCollection = database.collection("donations");
 
     //user data
     app.post("/users", async (req, res) => {
@@ -91,12 +92,25 @@ async function run() {
       const updatedData = {
         $set: data,
       };
+      const result = await campaignsCollection.updateOne(filter, updatedData);
+      res.send(result);
+    });
+
+    app.patch("/fundBalance/:id", async (req, res) => {
+      const id = req.params.id;
+      const data = req.body;
+      const filter = { _id: new ObjectId(id) };
+      const previousData = await campaignsCollection.findOne(filter);
+      const newData = data.fundBalance + previousData.fundBalance;
+      const updatedData = {
+        $set: { fundBalance: newData },
+      };
 
       const result = await campaignsCollection.updateOne(filter, updatedData);
       res.send(result);
     });
 
-    app.get("/my-campaigns/:id", async (req, res) => {
+    app.get("/campaign/:id", async (req, res) => {
       const id = req.params.id;
       const filter = { _id: new ObjectId(id) };
       const result = await campaignsCollection.findOne(filter);
@@ -108,6 +122,22 @@ async function run() {
       const filter = { _id: new ObjectId(id) };
       const result = await campaignsCollection.deleteOne(filter);
       res.send(result);
+    });
+
+    //donation data
+
+    app.post("/donations", async (req, res) => {
+      const donationData = req.body;
+      const result = await donationsCollection.insertOne(donationData);
+      res.send(result);
+    });
+
+    app.get("/donations", async (req, res) => {
+      const { userEmail } = req.query;
+      const donations = await donationsCollection
+        .find({ email: userEmail })
+        .toArray();
+      res.send(donations);
     });
 
     // Send a ping to confirm a successful connection
