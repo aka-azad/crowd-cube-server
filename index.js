@@ -30,7 +30,7 @@ const client = new MongoClient(uri, {
 async function run() {
   try {
     // Connect the client to the server	(optional starting in v4.7)
-    await client.connect();
+    // await client.connect();
 
     //db and collections
     const database = client.db("crowdcubeDB");
@@ -77,9 +77,9 @@ async function run() {
     });
 
     //user specific campaigns
-    app.get("/campaigns/:id", async (req, res) => {
-      const email = req.params.id;
-      const filter = { email: email };
+    app.get("/my-campaigns", async (req, res) => {
+      const { userEmail } = req.query;
+      const filter = { email: userEmail };
       const cursor = campaignsCollection.find(filter);
       const result = await cursor.toArray();
       res.send(result);
@@ -117,7 +117,7 @@ async function run() {
       res.send(result);
     });
 
-    app.delete("/my-campaigns/:id", async (req, res) => {
+    app.delete("/my-campaigns/delete/:id", async (req, res) => {
       const id = req.params.id;
       const filter = { _id: new ObjectId(id) };
       const result = await campaignsCollection.deleteOne(filter);
@@ -132,11 +132,10 @@ async function run() {
       res.send(result);
     });
 
-    app.get("/donations", async (req, res) => {
+    app.get("/my-donations", async (req, res) => {
       const { userEmail } = req.query;
-      const donations = await donationsCollection
-        .find({ email: userEmail })
-        .toArray();
+      const filter = { email: userEmail };
+      const donations = await donationsCollection.find(filter).toArray();
       res.send(donations);
     });
 
