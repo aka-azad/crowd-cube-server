@@ -1,24 +1,48 @@
 const express = require("express");
 const cors = require("cors");
+const cookieParser = require("cookie-parser");
+const jwt = require("jsonwebtoken");
 require("dotenv").config();
+
 const app = express();
 const port = process.env.PORT || 5000;
 
-app.use(cors());
+// Middlewares
+app.use(
+  cors({
+    origin: ["http://localhost:5173", "https://crowdcube-f0e0f.web.app"],
+    credentials: true,
+  })
+);
 app.use(express.json());
+app.use(cookieParser());
+app.use((req, res, next) => {
+  res.header("Access-Control-Allow-Credentials", "true");
+  next();
+});
 
-//ROOT
+const verifyToken = (req, res, next) => {
+  const token = req?.cookies?.token;
+  if (!token) {
+    return res.status(401).send({ message: "Unauthorized Access" });
+  }
 
+  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+    if (err) {
+      return res.status(401).send({ message: "Unauthorized Access" });
+    }
+    req.user = decoded;
+    next();
+  });
+};
+
+// Root
 app.get("/", (req, res) => {
   res.send("Server is Running");
 });
 
-//mongoDB
-
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 const uri = process.env.MONGODB_URI;
-
-// Create a MongoClient with a MongoClientOptions object to set the Stable API version
 const client = new MongoClient(uri, {
   serverApi: {
     version: ServerApiVersion.v1,
@@ -29,16 +53,44 @@ const client = new MongoClient(uri, {
 
 async function run() {
   try {
-    // Connect the client to the server	(optional starting in v4.7)
-    // await client.connect();
-
-    //db and collections
     const database = client.db("crowdcubeDB");
     const usersCollection = database.collection("users");
     const campaignsCollection = database.collection("campaigns");
     const donationsCollection = database.collection("donations");
 
-    //user data
+    // JWT related APIs
+    app.post("/login", async (req, res) => {
+      const email = req.body;
+
+      const user = await usersCollection.findOne(email);
+
+      if (!user) {
+        return res.status(400).send({ success: false });
+      }
+
+      const token = jwt.sign(email, process.env.JWT_SECRET, {
+        expiresIn: "5h",
+      });
+
+      res
+        .cookie("token", token, {
+          httpOnly: true,
+          sameSite: "none",
+          secure: true//process.env.NODE_ENV === "production",
+        })
+        .send({ success: true });
+    });
+
+    app.post("/logout", (req, res) => {
+      res
+        .clearCookie("token", {
+          httpOnly: true,
+          secure: process.env.NODE_ENV === "production",
+        })
+        .send({ success: true });
+    });
+
+    // Users data
     app.post("/users", async (req, res) => {
       const userData = req.body;
       const userEmail = req.body.email;
@@ -52,9 +104,8 @@ async function run() {
       res.send({ response: "user already added" });
     });
 
-    //campaigns data
-
-    app.post("/campaigns", async (req, res) => {
+    // Campaign related APIs
+    app.post("/campaigns", verifyToken, async (req, res) => {
       const campaignData = req.body;
       const result = await campaignsCollection.insertOne(campaignData);
       res.send(result);
@@ -71,13 +122,12 @@ async function run() {
       const filter = { deadline: { $gt: currentDate.toISOString() } };
       const runningCampaigns = await campaignsCollection
         .find(filter)
-        .limit(6)
+        .limit(8)
         .toArray();
       res.send(runningCampaigns);
     });
 
-    //user specific campaigns
-    app.get("/my-campaigns", async (req, res) => {
+    app.get("/my-campaigns", verifyToken, async (req, res) => {
       const { userEmail } = req.query;
       const filter = { email: userEmail };
       const cursor = campaignsCollection.find(filter);
@@ -85,7 +135,7 @@ async function run() {
       res.send(result);
     });
 
-    app.patch("/campaigns/:id", async (req, res) => {
+    app.patch("/campaigns/:id", verifyToken, async (req, res) => {
       const id = req.params.id;
       const data = req.body;
       const filter = { _id: new ObjectId(id) };
@@ -96,7 +146,7 @@ async function run() {
       res.send(result);
     });
 
-    app.patch("/fundBalance/:id", async (req, res) => {
+    app.patch("/fundBalance/:id", verifyToken, async (req, res) => {
       const id = req.params.id;
       const data = req.body;
       const filter = { _id: new ObjectId(id) };
@@ -105,7 +155,6 @@ async function run() {
       const updatedData = {
         $set: { fundBalance: newData },
       };
-
       const result = await campaignsCollection.updateOne(filter, updatedData);
       res.send(result);
     });
@@ -117,29 +166,27 @@ async function run() {
       res.send(result);
     });
 
-    app.delete("/my-campaigns/delete/:id", async (req, res) => {
+    app.delete("/my-campaigns/delete/:id", verifyToken, async (req, res) => {
       const id = req.params.id;
       const filter = { _id: new ObjectId(id) };
       const result = await campaignsCollection.deleteOne(filter);
       res.send(result);
     });
 
-    //donation data
-
-    app.post("/donations", async (req, res) => {
+    // Donation related APIs
+    app.post("/donations", verifyToken, async (req, res) => {
       const donationData = req.body;
       const result = await donationsCollection.insertOne(donationData);
       res.send(result);
     });
 
-    app.get("/my-donations", async (req, res) => {
+    app.get("/my-donations", verifyToken, async (req, res) => {
       const { userEmail } = req.query;
       const filter = { email: userEmail };
       const donations = await donationsCollection.find(filter).toArray();
       res.send(donations);
     });
 
-    // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log(
       "Pinged your deployment. You successfully connected to MongoDB!"
